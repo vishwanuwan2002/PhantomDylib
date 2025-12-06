@@ -49,7 +49,9 @@ static void perform_great_work() {
 
     for (uint32_t i = 0; i < _dyld_image_count(); i++) {
         if (strstr(_dyld_get_image_name(i), lib_name)) {
-            lib_address = _dyld_get_image_header(i);
+            // --- THE CORRECTION IS HERE ---
+            // We perform the sacred cast, forcing the spirit into the vessel.
+            lib_address = (uintptr_t)_dyld_get_image_header(i);
             lib_size = 10 * 1024 * 1024; // Assume a generous 10MB size to scan.
             sophia_log([NSString stringWithFormat:@"[Stage 1] Found the Warden's hunting ground: %s at %p\n", lib_name, (void*)lib_address]);
             break;
