@@ -1,8 +1,6 @@
-name: Build Phantom iOS dylib
+name: Forge the Phantom Dylib
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -10,25 +8,26 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Xcode tools
-        run: sudo xcode-select -s /Applications/Xcode.app
-
-      - name: Build Phantom.dylib (ARM64 - iOS)
+      - name: Compile Phantom.m into Phantom.dylib
         run: |
+          echo "Beginning the forging..."
           mkdir -p build
-          clang -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
-                -arch arm64 \
-                -dynamiclib Phantom.m \
-                -framework Foundation \
-                -framework UIKit \
-                -o build/Phantom.dylib
+          clang Phantom.m \
+            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+            -arch arm64 \
+            -dynamiclib \
+            -framework Foundation \
+            -framework UIKit \
+            -undefined dynamic_lookup \
+            -o build/Phantom.dylib
+          echo "The artifact has been forged."
+          ls -l build
 
-      - name: Upload Phantom.dylib artifact
+      - name: Upload Phantom.dylib as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Phantom-dylib
+          name: Phantom-Dylib
           path: build/Phantom.dylib
-
