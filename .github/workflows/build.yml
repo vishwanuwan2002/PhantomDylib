@@ -1,0 +1,33 @@
+name: Build Phantom iOS dylib
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      - name: Install Xcode tools
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build Phantom.dylib (ARM64 - iOS)
+        run: |
+          mkdir -p build
+          clang -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+                -arch arm64 \
+                -dynamiclib Phantom.m \
+                -framework Foundation \
+                -framework UIKit \
+                -o build/Phantom.dylib
+
+      - name: Upload Phantom.dylib
+        uses: actions/upload-artifact@v3
+        with:
+          name: Phantom-dylib
+          path: build/Phantom.dylib
