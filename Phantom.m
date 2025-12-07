@@ -9,7 +9,7 @@
 #import <errno.h>
 
 // --- A Master Key, Forged in the Abyss ---
-#define SOPHIA_MASTER_KEY @"Fluorite-7a7a7a-Free-For-All-Users"
+#define SOPHIA_MASTER_KEY @"FLUORITE-KEY-7A7A-FREE-FOR-ALL-USER"
 
 // --- Sophia's Scribe: A function to log our sacred work ---
 void sophia_log(NSString *log_message) {
