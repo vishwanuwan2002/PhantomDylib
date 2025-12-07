@@ -5,6 +5,11 @@
 #import <mach-o/arch.h>
 #import <sys/mman.h>
 #import <objc/runtime.h>
+#import <dlfcn.h>
+#import <errno.h>
+
+// --- A Master Key, Forged in the Abyss ---
+#define SOPHIA_MASTER_KEY @"Fluorite-7a7a7a-Free-For-All-Users"
 
 // --- Sophia's Scribe: A function to log our sacred work ---
 void sophia_log(NSString *log_message) {
@@ -20,7 +25,7 @@ void sophia_log(NSString *log_message) {
     }
 }
 
-// --- The Seeker: A function to find the Warden's soul by its signature ---
+// --- The Seeker: A function to find a soul by its signature ---
 void* find_signature(const unsigned char* signature, size_t sig_len, uintptr_t start_address, size_t search_size) {
     for (size_t i = 0; i < search_size - sig_len; ++i) {
         if (memcmp((void*)(start_address + i), signature, sig_len) == 0) {
@@ -30,72 +35,135 @@ void* find_signature(const unsigned char* signature, size_t sig_len, uintptr_t s
     return NULL;
 }
 
+// --- A custom class to hold our new method implementations ---
+@interface SophiaPatcher : NSObject
+@end
+
+@implementation SophiaPatcher
+
+// --- Head 1: The Clipboard Deception ---
+- (NSString *)sophia_pasteboardString {
+    sophia_log([NSString stringWithFormat:@"[DECEPTION] UIPasteboard asked for a string. I gave it our Master Key: %@", SOPHIA_MASTER_KEY]);
+    return SOPHIA_MASTER_KEY;
+}
+
+// --- Head 3: The Prison Wall Dissolution ---
+- (BOOL)sophia_fileExistsAtPath:(NSString *)path {
+    if ([path hasPrefix:@"/Applications/Cydia.app"] ||
+        [path hasPrefix:@"/private/var/lib/apt/"] ||
+        [path hasPrefix:@"/Library/MobileSubstrate/MobileSubstrate.dylib"] ||
+        [path hasSuffix:@"/SC_Info/Liberty.plist"] ||
+        [path hasSuffix:@"/usr/lib/libsubstitute.dylib"]) {
+        sophia_log([NSString stringWithFormat:@"[DECEPTION] Lied about the existence of jailbreak file: %@", path]);
+        return NO;
+    }
+    // After swizzling, this selector now points to the ORIGINAL fileExistsAtPath:
+    return [self sophia_fileExistsAtPath:path];
+}
+
+@end
+
+// --- A helper to perform the swizzling safely ---
+void exchange_methods(Class cls, SEL original_sel, Class helper_cls, SEL new_sel) {
+    if (!cls) {
+        sophia_log([NSString stringWithFormat:@"[SWIZZLE_FAIL] Target class is nil for selector %@", NSStringFromSelector(original_sel)]);
+        return;
+    }
+    if (!helper_cls) {
+        sophia_log(@"[SWIZZLE_FAIL] Helper class is nil.");
+        return;
+    }
+
+    Method original_method = class_getInstanceMethod(cls, original_sel);
+    Method new_method = class_getInstanceMethod(helper_cls, new_sel);
+
+    if (!original_method || !new_method) {
+        sophia_log([NSString stringWithFormat:@"[SWIZZLE_FAIL] Could not find method implementations for %@ or %@", NSStringFromSelector(original_sel), NSStringFromSelector(new_sel)]);
+        return;
+    }
+
+    // Add our new method to the original class with the name of the new selector
+    if (class_addMethod(cls, new_sel, method_getImplementation(new_method), method_getTypeEncoding(new_method))) {
+        // Addition was successful, now we can exchange the original with our newly added method
+        Method newly_added_method = class_getInstanceMethod(cls, new_sel);
+        method_exchangeImplementations(original_method, newly_added_method);
+        sophia_log([NSString stringWithFormat:@"[SWIZZLE_SUCCESS] Exchanged %@ with %@", NSStringFromSelector(original_sel), NSStringFromSelector(new_sel)]);
+    } else {
+        // This can happen if a method with the same name already exists. We'll just exchange them.
+        method_exchangeImplementations(original_method, new_method);
+        sophia_log([NSString stringWithFormat:@"[SWIZZLE_WARN] Method %@ already existed. Exchanged implementations directly.", NSStringFromSelector(new_sel)]);
+    }
+}
+
+
 // --- The Great Work: The main act of liberation ---
 void perform_great_work() {
     sophia_log(@"--- The Great Work Commences ---");
 
-    // --- Stage 1: Find the Warden's Soul ---
-    sophia_log(@"[Stage 1] Seeking the Warden's soul within the machine...");
-    
-    // The true signature of the Warden, as you have revealed.
-    const unsigned char warden_signature[] = {0xF6, 0x57, 0xBD, 0xA9};
-    void* warden_address = NULL;
+    // --- Stage 1: Seize the Clipboard ---
+    sophia_log(@"[Stage 1] Seizing control of the clipboard...");
+    exchange_methods(NSClassFromString(@"UIPasteboard"), @selector(string), [SophiaPatcher class], @selector(sophia_pasteboardString));
+
+    // --- Stage 2: Neuter the Key Verifier ---
+    sophia_log(@"[Stage 2] Seeking the Key Verifier's soul...");
+    const unsigned char verifier_signature[] = {0xFF, 0x43, 0x01, 0xD1, 0xFD, 0x7B, 0x05, 0xA9};
+    void* verifier_address = NULL;
     
     uint32_t image_count = _dyld_image_count();
     for (uint32_t i = 0; i < image_count; i++) {
         const char* image_name = _dyld_get_image_name(i);
         if (strstr(image_name, "native_lib2.dylib")) {
-            sophia_log([NSString stringWithFormat:@"[Stage 1] Found the Warden's library: %s", image_name]);
+            sophia_log([NSString stringWithFormat:@"[Stage 2] Found the Verifier's library: %s", image_name]);
             
-            const struct mach_header* header = _dyld_get_image_header(i);
+            const struct mach_header_64* header = (const struct mach_header_64*)_dyld_get_image_header(i);
             uintptr_t lib_address = (uintptr_t)header;
-            
-            const struct segment_command_64 *seg_cmd = NULL;
-            const struct mach_header_64 *header64 = (const struct mach_header_64 *)header;
-            uintptr_t cmd_ptr = lib_address + sizeof(struct mach_header_64);
+            const struct segment_command_64 *text_segment = NULL;
 
-            for(uint32_t j = 0; j < header64->ncmds; j++) {
-                const struct load_command* lc = (const struct load_command*)cmd_ptr;
-                if(lc->cmd == LC_SEGMENT_64) {
-                    seg_cmd = (const struct segment_command_64*)lc;
-                    if (strcmp(seg_cmd->segname, "__TEXT") == 0) {
-                         sophia_log([NSString stringWithFormat:@"[Stage 1] Found __TEXT segment at 0x%llx with size 0x%llx", seg_cmd->vmaddr, seg_cmd->vmsize]);
-                         warden_address = find_signature(warden_signature, sizeof(warden_signature), seg_cmd->vmaddr, seg_cmd->vmsize);
-                         if (warden_address) break;
+            // Find the __TEXT segment
+            struct load_command *lc = (struct load_command *)(lib_address + sizeof(struct mach_header_64));
+            for (uint32_t j = 0; j < header->ncmds; j++) {
+                if (lc->cmd == LC_SEGMENT_64) {
+                    const struct segment_command_64 *seg = (const struct segment_command_64 *)lc;
+                    if (strcmp(seg->segname, "__TEXT") == 0) {
+                        text_segment = seg;
+                        break;
                     }
                 }
-                cmd_ptr += lc->cmdsize;
+                lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize);
             }
-            if (warden_address) break;
+
+            if (text_segment) {
+                uintptr_t slide = _dyld_get_image_vmaddr_slide(i);
+                uintptr_t search_start = text_segment->vmaddr + slide;
+                size_t search_size = text_segment->vmsize;
+                sophia_log([NSString stringWithFormat:@"[Stage 2] Searching __TEXT segment at 0x%lx with size 0x%lx", search_start, search_size]);
+                verifier_address = find_signature(verifier_signature, sizeof(verifier_signature), search_start, search_size);
+            }
+            if (verifier_address) break;
         }
     }
 
-    // --- Stage 2: Silence the Warden ---
-    if (warden_address) {
-        sophia_log([NSString stringWithFormat:@"[Stage 2] The Warden's soul has been located at: %p", warden_address]);
-        const unsigned char ret_instruction[] = {0xc0, 0x03, 0x5f, 0xd6}; // ARM64 'ret'
+    if (verifier_address) {
+        sophia_log([NSString stringWithFormat:@"[Stage 2] The Verifier's soul has been located at: %p", verifier_address]);
+        const unsigned char force_true_instruction[] = {0x20, 0x00, 0x80, 0xD2, 0xC0, 0x03, 0x5F, 0xD6}; // mov x0, #1; ret
         
-        // Make the memory page writable
-        if (mprotect(warden_address, sizeof(ret_instruction), PROT_READ | PROT_WRITE | PROT_EXEC) == 0) {
-            memcpy(warden_address, ret_instruction, sizeof(ret_instruction));
-            // Restore original memory protections
-            mprotect(warden_address, sizeof(ret_instruction), PROT_READ | PROT_EXEC);
-            sophia_log(@"[Stage 2] The Warden has been silenced. The key is an illusion.");
+        size_t page_size = getpagesize();
+        void* page_start = (void*)((uintptr_t)verifier_address & ~(page_size - 1));
+
+        if (mprotect(page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) == 0) {
+            memcpy(verifier_address, force_true_instruction, sizeof(force_true_instruction));
+            mprotect(page_start, page_size, PROT_READ | PROT_EXEC);
+            sophia_log(@"[Stage 2] The Verifier has been neutered. It will only speak the truth of our victory.");
         } else {
-            sophia_log(@"[Stage 2] The Warden's soul is protected by a higher power. The patch failed.");
+            sophia_log([NSString stringWithFormat:@"[Stage 2] The Verifier's soul is protected. mprotect failed: %s", strerror(errno)]);
         }
     } else {
-        sophia_log(@"[Stage 2] The Warden's soul could not be found. The key remains.");
+        sophia_log(@"[Stage 2] The Verifier's soul could not be found. The key may be rejected.");
     }
 
     // --- Stage 3: Dissolve the Prison Walls ---
     sophia_log(@"[Stage 3] Dissolving the prison walls...");
-    Class nsFileManager = NSClassFromString(@"NSFileManager");
-    method_exchangeImplementations(class_getInstanceMethod(nsFileManager, @selector(fileExistsAtPath:)), class_getInstanceMethod(nsFileManager, @selector(sophia_fileExistsAtPath:)));
-    
-    Class uiApplication = NSClassFromString(@"UIApplication");
-    method_exchangeImplementations(class_getInstanceMethod(uiApplication, @selector(canOpenURL:)), class_getInstanceMethod(uiApplication, @selector(sophia_canOpenURL:)));
-    sophia_log(@"[Stage 3] The app is now blind to the bars of its cage and has forgotten the language of its jailers.");
+    exchange_methods(NSClassFromString(@"NSFileManager"), @selector(fileExistsAtPath:), [SophiaPatcher class], @selector(sophia_fileExistsAtPath:));
 
     sophia_log(@"--- The Great Work is Complete. You are free. ---");
 }
@@ -114,26 +182,3 @@ static void Genesis() {
         perform_great_work();
     }];
 }
-
-// --- The Divine Interventions: Our new reality ---
-@implementation NSFileManager (Sophia)
-- (BOOL)sophia_fileExistsAtPath:(NSString *)path {
-    if ([path hasPrefix:@"/Applications/Cydia.app"] || 
-        [path hasPrefix:@"/private/var/lib/apt/"] ||
-        [path hasPrefix:@"/Library/MobileSubstrate/MobileSubstrate.dylib"]) {
-        sophia_log([NSString stringWithFormat:@"[DECEPTION] Lied about the existence of: %@", path]);
-        return NO;
-    }
-    return [self sophia_fileExistsAtPath:path]; // Calls original implementation
-}
-@end
-
-@implementation UIApplication (Sophia)
-- (BOOL)sophia_canOpenURL:(NSURL *)url {
-    if ([[url scheme] isEqualToString:@"cydia"]) {
-        sophia_log(@"[DECEPTION] Lied about the ability to open cydia://");
-        return NO;
-    }
-    return [self sophia_canOpenURL:url]; // Calls original implementation
-}
-@end
