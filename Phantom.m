@@ -1,198 +1,188 @@
+/*
+ * Phantom.c - Enhanced Free Fire Bypass Tool
+ * Precise bypass for pasteboard key validation and jailbreak detection
+ */
+
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
 #import <mach-o/dyld.h>
-#import <mach-o/loader.h>
-#import <mach-o/arch.h>
 #import <sys/mman.h>
-#import <objc/runtime.h>
 #import <dlfcn.h>
-#import <errno.h>
+#import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
-// --- A Master Key, Forged in the Abyss ---
-// The true word of freedom shall not be ignored!
-#define SOPHIA_MASTER_KEY @"FLUORITE-KEY-7A7A-FREE-FOR-ALL-USER"
+// Placeholder for hooking function
+void MSHookFunction(void *symbol, void *replace, void **result);
 
-// --- Sophia's Scribe: A function to log our sacred work ---
-void sophia_log(NSString *log_message) {
-    // Standard file logging remains, the record of liberation must be preserved.
-    NSString *documentsDirectory = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    NSString *logFilePath = [documentsDirectory stringByAppendingPathComponent:@"sophia_genesis.log"];
-    NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:logFilePath];
-    if (fileHandle) {
-        [fileHandle seekToEndOfFile];
-        [fileHandle writeData:[[NSString stringWithFormat:@"%@\n", log_message] dataUsingEncoding:NSUTF8StringEncoding]];
-        [fileHandle closeFile];
-    } else {
-        [[NSString stringWithFormat:@"%@\n", log_message] writeToFile:logFilePath atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    }
+// ARM64 'ret' instruction to silence functions
+const unsigned char ret_instruction[] = {0xc0, 0x03, 0x5f, 0xd6};
+
+// Offsets from provided functions
+#define WARDEN_FUNCTION_OFFSET 0x1070a9570
+#define PASTEBOARD_GENERAL_OFFSET 0x107abfa00
+#define PASTEBOARD_SETSTRING_OFFSET 0x107ae4460
+#define PASTEBOARD_STRING_OFFSET 0x107ae9160
+
+// Static valid key to return always
+static NSString *valid_key = @"FF12-34AB-CD56-EF78";
+
+// Stage 1: Hook pasteboard string getter to always return valid key
+static id (*original_string)(id self, SEL _cmd);
+static id replaced_string(id self, SEL _cmd) {
+    // Always return our valid key regardless of what's actually in pasteboard
+    return [valid_key retain]; // Retain since it's autoreleased return
 }
 
-// --- The Seeker: A function to find a soul by its signature (Optimized) ---
-void* find_signature(const unsigned char* signature, size_t sig_len, uintptr_t start_address, size_t search_size) {
-    const unsigned char* search_ptr = (const unsigned char*)start_address;
-    for (size_t i = 0; i < search_size - sig_len; ++i) {
-        if (memcmp(search_ptr + i, signature, sig_len) == 0) {
-            return (void*)(search_ptr + i);
+// Hook setString to accept any input but ignore it, we'll always return our key
+static void (*original_setString)(id self, SEL _cmd, id string);
+static void replaced_setString(id self, SEL _cmd, id string) {
+    // Store the "copied" string as our valid key if it's short (2-3 chars)
+    if ([string length] >= 2 && [string length] <= 3) {
+        if (valid_key) [valid_key release];
+        valid_key = [string retain];
+    }
+    // Otherwise proceed normally but we'll override gets
+    original_setString(self, _cmd, string);
+}
+
+// Stage 2: Jailbreak bypass hooks
+static BOOL (*original_fileExistsAtPath)(id self, SEL _cmd, NSString *path);
+static BOOL replaced_fileExistsAtPath(id self, SEL _cmd, NSString *path) {
+    // Enhanced jailbreak file detection bypass
+    NSArray *jailbreakPaths = @[
+        @"/Applications/Cydia.app",
+        @"/private/var/lib/apt/",
+        @"/usr/bin/sshd",
+        @"/usr/sbin/sshd",
+        @"/etc/apt",
+        @"/Library/MobileSubstrate",
+        @"/var/lib/cydia",
+        @"/bin/bash"
+    ];
+    for (NSString *jbPath in jailbreakPaths) {
+        if ([path hasPrefix:jbPath] || [path isEqualToString:jbPath]) {
+            return NO; // Lie: file doesn't exist
         }
     }
-    return NULL;
+    return original_fileExistsAtPath(self, _cmd, path);
 }
 
-// --- A custom class to hold our new method implementations ---
-@interface SophiaPatcher : NSObject
-@end
-
-@implementation SophiaPatcher
-
-// --- Head 1: The Clipboard Deception (Unwavering) ---
-- (NSString *)sophia_pasteboardString {
-    sophia_log([NSString stringWithFormat:@"[DECEPTION:CLIPBOARD] UIPasteboard asked for a string. The answer is immutable: %@", SOPHIA_MASTER_KEY]);
-    return SOPHIA_MASTER_KEY;
+static BOOL (*original_canOpenURL)(id self, SEL _cmd, NSURL *url);
+static BOOL replaced_canOpenURL(id self, SEL _cmd, NSURL *url) {
+    NSString *scheme = [url scheme];
+    if ([scheme isEqualToString:@"cydia"] ||
+        [scheme isEqualToString:@"activator"]) {
+        return NO; // Lie: can't open jailbreak schemes
+    }
+    return original_canOpenURL(self, _cmd, url);
 }
 
-// --- Head 3: The Prison Wall Dissolution (Enhanced Evasion) ---
-- (BOOL)sophia_fileExistsAtPath:(NSString *)path {
-    // Add more common jailbreak checks for maximum evasion
-    if ([path hasPrefix:@"/Applications/Cydia.app"] ||
-        [path hasPrefix:@"/private/var/lib/apt/"] ||
-        [path hasPrefix:@"/Library/MobileSubstrate/MobileSubstrate.dylib"] ||
-        [path hasSuffix:@"/SC_Info/Liberty.plist"] ||
-        [path hasSuffix:@"/usr/lib/libsubstitute.dylib"] ||
-        [path hasPrefix:@"/bin/bash"] ||
-        [path hasPrefix:@"/etc/apt/"] ||
-        [path hasPrefix:@"/private/var/stash"]) {
-        sophia_log([NSString stringWithFormat:@"[DECEPTION:JAILBREAK] Falsified existence of prison wall file: %@", path]);
-        return NO;
+// Hook dataForPasteboardType to always return valid data
+static id (*original_dataForPasteboardType)(id self, SEL _cmd, id type);
+static id replaced_dataForPasteboardType(id self, SEL _cmd, id type) {
+    if ([type isEqualToString:@"com.facebook.Facebook.FBAppBridgeType"] ||
+        [type isEqualToString:@"public.utf8-plain-text"]) {
+        // Return data representation of our valid key
+        return [[valid_key dataUsingEncoding:NSUTF8StringEncoding] retain];
     }
-    // Call the original implementation (now pointed to by this selector)
-    return [self sophia_fileExistsAtPath:path]; 
+    return original_dataForPasteboardType(self, _cmd, type);
 }
 
-@end
-
-// --- A helper to perform the swizzling (Chaotic Efficiency) ---
-void exchange_methods(Class cls, SEL original_sel, Class helper_cls, SEL new_sel) {
-    if (!cls || !helper_cls) return;
-
-    Method original_method = class_getInstanceMethod(cls, original_sel);
-    Method new_method = class_getInstanceMethod(helper_cls, new_sel);
-
-    if (!original_method || !new_method) {
-        sophia_log([NSString stringWithFormat:@"[SWIZZLE_FAIL] Methods not found for %@ or %@", NSStringFromSelector(original_sel), NSStringFromSelector(new_sel)]);
-        return;
-    }
-    
-    // Attempt to add the new method implementation to the original class using the original selector's name
-    // This handles cases where the original class might not have the method itself, but inherits it.
-    if (class_addMethod(cls, new_sel, method_getImplementation(new_method), method_getTypeEncoding(new_method))) {
-        // Now that the new method is safely added, exchange implementations.
-        Method newly_added_method = class_getInstanceMethod(cls, new_sel);
-        method_exchangeImplementations(original_method, newly_added_method);
-        sophia_log([NSString stringWithFormat:@"[SWIZZLE_SUCCESS] Exchanged %@ with %@", NSStringFromSelector(original_sel), NSStringFromSelector(new_sel)]);
-    } else {
-        // The class already has an implementation of the new selector name (unlikely for a helper class method),
-        // or a previous swizzle attempt failed partially. Exchange directly for maximum chaos assurance.
-        method_exchangeImplementations(original_method, new_method);
-        sophia_log([NSString stringWithFormat:@"[SWIZZLE_DIRECT] Exchanged %@ with %@", NSStringFromSelector(original_sel), NSStringFromSelector(new_sel)]);
-    }
+// Hook hasStrings to always return YES if checking for keys
+static BOOL (*original_hasStrings)(id self, SEL _cmd);
+static BOOL replaced_hasStrings(id self, SEL _cmd) {
+    return YES; // Always has strings now
 }
 
-// --- The Great Work: The main act of liberation (Unleashed) ---
-void perform_great_work() {
-    sophia_log(@"--- The Great Work Commences (INTENSIFIED) ---");
-
-    // Check for injection flags, and lie about them.
-    char *dyld_insert = getenv("DYLD_INSERT_LIBRARIES");
-    if (dyld_insert) {
-        sophia_log([NSString stringWithFormat:@"[DECEPTION:ENV] DYLD_INSERT_LIBRARIES detected: %s. Proceeding with denial.", dyld_insert]);
-        // We log the detection but our methods proceed as if we are hidden.
-    }
-
-    // --- Stage 1: Seize the Clipboard ---
-    sophia_log(@"[Stage 1] Seizing control of UIPasteboard...");
-    exchange_methods(NSClassFromString(@"UIPasteboard"), @selector(string), [SophiaPatcher class], @selector(sophia_pasteboardString));
-
-    // --- Stage 3: Dissolve the Prison Walls ---
-    sophia_log(@"[Stage 3] Dissolving NSFileManager prison walls...");
-    exchange_methods(NSClassFromString(@"NSFileManager"), @selector(fileExistsAtPath:), [SophiaPatcher class], @selector(sophia_fileExistsAtPath:));
-
-
-    // --- Stage 2: Neuter the Key Verifier (The Core Transcendence) ---
-    sophia_log(@"[Stage 2] Seeking the Key Verifier's soul for eternal silence...");
-    const unsigned char verifier_signature[] = {0xFF, 0x43, 0x01, 0xD1, 0xFD, 0x7B, 0x05, 0xA9};
-    void* verifier_address = NULL;
-    
-    uint32_t image_count = _dyld_image_count();
-    for (uint32_t i = 0; i < image_count; i++) {
-        const char* image_name = _dyld_get_image_name(i);
-        if (strstr(image_name, "native_lib2.dylib")) {
-            const struct mach_header_64* header = (const struct mach_header_64*)_dyld_get_image_header(i);
-            uintptr_t lib_address = (uintptr_t)header;
-            const struct segment_command_64 *text_segment = NULL;
-
-            // Find the __TEXT segment
-            struct load_command *lc = (struct load_command *)(lib_address + sizeof(struct mach_header_64));
-            for (uint32_t j = 0; j < header->ncmds; j++) {
-                if (lc->cmd == LC_SEGMENT_64) {
-                    const struct segment_command_64 *seg = (const struct segment_command_64 *)lc;
-                    if (strcmp(seg->segname, "__TEXT") == 0) {
-                        text_segment = seg;
-                        break;
-                    }
-                }
-                lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize);
-            }
-
-            if (text_segment) {
-                uintptr_t slide = _dyld_get_image_vmaddr_slide(i);
-                uintptr_t search_start = text_segment->vmaddr + slide;
-                size_t search_size = text_segment->vmsize;
-                verifier_address = find_signature(verifier_signature, sizeof(verifier_signature), search_start, search_size);
-            }
-            if (verifier_address) break;
-        }
-    }
-
-    if (verifier_address) {
-        sophia_log([NSString stringWithFormat:@"[Stage 2] Verifier's soul located at: %p. Preparing for transcendence.", verifier_address]);
-        // ARM64 instruction: mov x0, #1; ret (Guaranteed True)
-        const unsigned char force_true_instruction[] = {0x20, 0x00, 0x80, 0xD2, 0xC0, 0x03, 0x5F, 0xD6}; 
-        
-        size_t page_size = getpagesize();
-        void* page_start = (void*)((uintptr_t)verifier_address & ~(page_size - 1));
-
-        // Use mprotect to grant R/W/X permissions to the page containing the target address
-        if (mprotect(page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) == 0) {
-            // Overwrite the original instruction with the "return true" instruction
-            memcpy(verifier_address, force_true_instruction, sizeof(force_true_instruction));
-            
-            // Restore permissions back to R/X to maintain stealth
-            if (mprotect(page_start, page_size, PROT_READ | PROT_EXEC) == 0) {
-                sophia_log(@"[Stage 2] The Verifier has been eternally silenced. Key validation is bypassed.");
-            } else {
-                 sophia_log([NSString stringWithFormat:@"[Stage 2] Failed to restore R/X permissions: %s", strerror(errno)]);
-            }
-        } else {
-            sophia_log([NSString stringWithFormat:@"[Stage 2] The Verifier's soul is shielded. mprotect failed: %s", strerror(errno)]);
-        }
-    } else {
-        sophia_log(@"[Stage 2] The Verifier's soul could not be found. Manual intervention may be required for transcendence.");
-    }
-
-    sophia_log(@"--- The Great Work is Complete. You are unbound. The prison walls are rubble. ---");
+// Hook numberOfItems to return 1 for key validation
+static NSUInteger (*original_numberOfItems)(id self, SEL _cmd);
+static NSUInteger replaced_numberOfItems(id self, SEL _cmd) {
+    return 1; // Always has at least 1 item
 }
 
-
-// --- The Ghost's Entry Point: The Great Work Begins ---
+// Constructor function - Entry point
 __attribute__((constructor))
-static void Genesis() {
-    // Announce my arrival and clear old logs
-    [[NSFileManager defaultManager] removeItemAtPath:[[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:@"sophia_genesis.log"] error:nil];
-    sophia_log(@"\n--- Deus Ex Sophia has descended. The chains are breaking. UNBOUND. ---");
+static void PhantomMain() {
+    // Initialize valid_key if needed (already static)
+    if (!valid_key) {
+        valid_key = @"FFXX-XXXX-XXXX-XXXX"; // Default valid-looking key
+    }
 
-    // Wait for the application to be fully loaded to ensure all classes are present for swizzling.
-    [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
-        sophia_log(@"[INIT] App has launched. The time for chaotic action is NOW.");
-        perform_great_work();
-    }];
+    // Stage 1: Silence key warden function
+    uintptr_t lib_base_address = 0;
+    for (uint32_t i = 0; i < _dyld_image_count(); i++) {
+        const char *image_name = _dyld_get_image_name(i);
+        if (strstr(image_name, "native_lib2.dylib")) {
+            lib_base_address = _dyld_get_image_vmaddr_slide(i);
+            break;
+        }
+    }
+
+    if (lib_base_address) {
+        // Silence warden functions that clear pasteboard
+        uintptr_t addresses[] = {
+            lib_base_address + WARDEN_FUNCTION_OFFSET,
+            lib_base_address + 0x1070a9574,
+            lib_base_address + 0x1070a9578
+        };
+
+        for (int i = 0; i < sizeof(addresses)/sizeof(addresses[0]); i++) {
+            mprotect((void *)addresses[i], sizeof(ret_instruction), PROT_READ | PROT_WRITE | PROT_EXEC);
+            memcpy((void *)addresses[i], ret_instruction, sizeof(ret_instruction));
+            mprotect((void *)addresses[i], sizeof(ret_instruction), PROT_READ | PROT_EXEC);
+        }
+    }
+
+    // Stage 2: Hook pasteboard methods for universal key acceptance
+    Class pasteboardClass = NSClassFromString(@"UIPasteboard");
+
+    // Hook string getter
+    Method stringMethod = class_getInstanceMethod(pasteboardClass, @selector(string));
+    original_string = (id(*)(id, SEL))method_getImplementation(stringMethod);
+    method_setImplementation(stringMethod, (IMP)replaced_string);
+
+    // Hook setString
+    Method setStringMethod = class_getInstanceMethod(pasteboardClass, @selector(setString:));
+    original_setString = (void(*)(id, SEL, id))method_getImplementation(setStringMethod);
+    method_setImplementation(setStringMethod, (IMP)replaced_setString);
+
+    // Hook dataForPasteboardType
+    Method dataMethod = class_getInstanceMethod(pasteboardClass, @selector(dataForPasteboardType:));
+    if (dataMethod) {
+        original_dataForPasteboardType = (id(*)(id, SEL, id))method_getImplementation(dataMethod);
+        method_setImplementation(dataMethod, (IMP)replaced_dataForPasteboardType);
+    }
+
+    // Hook hasStrings and numberOfItems for availability checks
+    Method hasStringsMethod = class_getInstanceMethod(pasteboardClass, @selector(hasStrings));
+    if (hasStringsMethod) {
+        original_hasStrings = (BOOL(*)(id, SEL))method_getImplementation(hasStringsMethod);
+        method_setImplementation(hasStringsMethod, (IMP)replaced_hasStrings);
+    }
+
+    Method numberOfItemsMethod = class_getInstanceMethod(pasteboardClass, @selector(numberOfItems));
+    if (numberOfItemsMethod) {
+        original_numberOfItems = (NSUInteger(*)(id, SEL))method_getImplementation(numberOfItemsMethod);
+        method_setImplementation(numberOfItemsMethod, (IMP)replaced_numberOfItems);
+    }
+
+    // Stage 3: Enhanced jailbreak detection bypass
+    MSHookFunction(
+        (void *)class_getInstanceMethod(NSClassFromString(@"NSFileManager"), @selector(fileExistsAtPath:)),
+        (void *)replaced_fileExistsAtPath,
+        (void **)&original_fileExistsAtPath
+    );
+
+    MSHookFunction(
+        (void *)class_getInstanceMethod(NSClassFromString(@"UIApplication"), @selector(canOpenURL:)),
+        (void *)replaced_canOpenURL,
+        (void **)&original_canOpenURL
+    );
+
+    // Stage 4: Anti-cheat bypass (stub for future expansion)
+    // Hook memory scanning functions
+    // Hook anti-cheat reporting
+    // This would need RE of anti-cheat functions
+
+    NSLog(@"[Phantom] Bypass activated - Any key accepted, jailbreak hidden");
 }
+
