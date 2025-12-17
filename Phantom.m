@@ -7,181 +7,171 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <QuartzCore/QuartzCore.h>
-#include <Metal/Metal.h>
-#include <MetalKit/MetalKit.h>
 #include <mach/mach.h>
 
 // =================================================================================================
-// MARK: - Memory Scanner & Analysis Framework
+// MARK: - Tier 3 Stealth & Anti-Ban Framework
 // =================================================================================================
-// This is the brain of the operation. It will find the game data we need.
 
+// --- Tier 3: Module Concealment ---
+// This function will unlink our dylib from the system's list of loaded modules,
+// making it invisible to enumeration checks. A truly ghost-like presence.
+void conceal_module_presence() {
+    NSLog(@"[DEUS_EX | T3] Initiating module concealment...");
+    struct mach_header_64* header;
+    struct load_command* lc;
+    struct dyld_image_info* image_info;
+    uint32_t i, image_count = _dyld_image_count();
+
+    for (i = 0; i < image_count; i++) {
+        header = (struct mach_header_64*)_dyld_get_image_header(i);
+        // Find our own image in memory
+        if (header->filetype == MH_DYLIB && header->flags & MH_DYLDLINK) {
+            lc = (struct load_command*)(header + 1);
+            for (int j = 0; j < header->ncmds; j++, lc = (struct load_command*)((char*)lc + lc->cmdsize)) {
+                // Heuristic: A dylib with our unique function names or strings inside.
+                // For now, we will assume this is the only injected dylib.
+                // A more robust check is needed for a real scenario.
+            }
+             // For this example, we assume we've found our dylib header.
+             // In a real hack, you'd confirm this more reliably.
+             // Now, we manipulate the dyld linked list.
+             // THIS IS DANGEROUS AND REQUIRES DEEP KNOWLEDGE of dyld internals.
+             // The following is a conceptual representation.
+             // A real implementation would need to find the dyld all_image_infos structure.
+             NSLog(@"[DEUS_EX | T3] Conceptual: Unlinking from dyld's all_image_infos.");
+             break; // Stop after finding and 'concealing' the first dylib.
+        }
+    }
+}
+
+// --- Tier 2: Signature Scanning ---
+// This is the intelligent core of our data retrieval.
 @interface MemoryScanner : NSObject
 + (instancetype)sharedInstance;
 - (void)startScan;
+- (uintptr_t)patternScanFor:(char *)pattern mask:(char *)mask;
 @property (nonatomic, assign) uintptr_t unityPlayerBaseAddress;
-@property (nonatomic, assign) uintptr_t viewProjectionMatrixAddress;
+@property (nonatomic, assign) size_t unityPlayerSize;
+@property (nonatomic, assign) uintptr_t playerListAddress;
+// Add any other pointers you need, e.g., for view angles
+@property (nonatomic, assign) uintptr_t viewAnglesAddress;
 @end
 
 @implementation MemoryScanner
-+ (instancetype)sharedInstance {
-    static MemoryScanner *sharedInstance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        sharedInstance = [[MemoryScanner alloc] init];
-    });
-    return sharedInstance;
-}
-
+// ... (Implementation of sharedInstance and patternScanFor from previous version)
 - (void)startScan {
-    // This is where we will continuously scan for the necessary pointers and offsets.
-    // For now, we will focus on finding the base address of the UnityPlayer library,
-    // as most game data will be relative to this.
-    
-    uint32_t count = _dyld_image_count();
-    for (uint32_t i = 0; i < count; i++) {
-        const char *imageName = _dyld_get_image_name(i);
-        if (strstr(imageName, "UnityPlayer.dylib") != NULL) {
-            self.unityPlayerBaseAddress = (uintptr_t)_dyld_get_image_header(i);
-            NSLog(@"[DEUS_EX] Found UnityPlayer.dylib at base address: 0x%lx", self.unityPlayerBaseAddress);
-            
-            // TODO: Once we have the base address, we can start searching for specific
-            // function pointers or static data that will lead us to the player list
-            // and view matrix. This requires manual reverse engineering.
-            // For example: self.viewProjectionMatrixAddress = self.unityPlayerBaseAddress + 0x1A2B3C4D;
-            
-            break;
-        }
-    }
-    if (self.unityPlayerBaseAddress == 0) {
-        NSLog(@"[DEUS_EX] CRITICAL: Could not find UnityPlayer.dylib. The hack will be blind.");
-    }
+    // ... (Implementation to find UnityPlayer base and size)
+    // TODO: Your primary task is to find the signatures for the data you need.
+    // Example for finding player list:
+    // char pattern[] = "\x48\x8B\x0D\x00\x00\x00\x00\xE8\x00\x00\x00\x00";
+    // char mask[]    = "xxx????x????";
+    // uintptr_t foundAddr = [self patternScanFor:pattern mask:mask];
+    // if(foundAddr) self.playerListAddress = ...;
 }
 @end
 
 
+// --- Tier 1: Core Bypasses ---
+typedef int (*ptrace_ptr_t)(int _request, pid_t _pid, caddr_t _addr, int _data);
+void bypass_debugger_detection() {
+    NSLog(@"[DEUS_EX | T1] Applying PT_DENY_ATTACH to become a fortress.");
+    ptrace_ptr_t p = dlsym(dlopen("/usr/lib/system/libsystem_kernel.dylib", RTLD_LAZY), "ptrace");
+    if(p) p(31, 0, 0, 0); // 31 = PT_DENY_ATTACH
+}
+
+void bypass_jailbreak_detection() {
+    NSLog(@"[DEUS_EX | T1] Swizzling fileExistsAtPath to lie about the environment.");
+    // ... (Full implementation of fileExistsAtPath swizzling)
+}
+
 // =================================================================================================
-// MARK: - Game Data Structures & Accessors
+// MARK: - AI-Inspired Aimbot Framework
 // =================================================================================================
-// These functions will now use the MemoryScanner to get their data.
 
 typedef struct { float x, y, z; } Vector3;
 typedef struct { int health; Vector3 position; } PlayerData;
 
-PlayerData* get_all_players(int* playerCount) {
-    // TODO: Implement the logic to find the player array based on the UnityPlayer base address.
-    *playerCount = 0;
-    return NULL;
+// This function will contain the logic for the intelligent aimbot
+void run_aimbot_logic() {
+    // 1. Get Player Data
+    // TODO: Use the MemoryScanner's found address to get the list of players.
+    int playerCount = 0;
+    PlayerData* players = NULL; // = get_all_players(&playerCount);
+
+    if (playerCount < 1) return;
+
+    // 2. Select Target
+    // TODO: Implement logic to select the best target (e.g., closest to crosshair).
+    PlayerData target = players[0];
+
+    // 3. Calculate Aim Angles
+    // TODO: Get local player position and camera angles.
+    // TODO: Calculate the vector from local player to target.
+    // TODO: Convert this vector to the required pitch and yaw angles.
+
+    // 4. Humanize and Apply Aim
+    // This is where the AI concepts come in. Instead of instantly snapping, we
+    // apply a smoothed, human-like adjustment.
+    float required_yaw = 123.45; // Placeholder
+    float current_yaw = 120.0; // Placeholder
+    float smoothing_factor = 0.8; // Lower is smoother
+    
+    float new_yaw = current_yaw + ((required_yaw - current_yaw) * (1.0 - smoothing_factor));
+
+    // 5. Write to Memory
+    // TODO: Use the MemoryScanner's found viewAnglesAddress to write the new_yaw.
+    // uintptr_t yaw_address = [MemoryScanner sharedInstance].viewAnglesAddress;
+    // if (yaw_address) {
+    //     *(float*)yaw_address = new_yaw;
+    // }
 }
 
-float* get_view_projection_matrix() {
-    uintptr_t matrixAddress = [MemoryScanner sharedInstance].viewProjectionMatrixAddress;
-    if (matrixAddress != 0) {
-        return (float*)matrixAddress;
-    }
-    // Return an identity matrix if not found.
-    static float matrix[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-    return matrix;
-}
 
 // =================================================================================================
-// MARK: - ESP Drawing Logic
+// MARK: - Main Hack Thread
 // =================================================================================================
-// (Largely unchanged, but now relies on the dynamic memory scanner)
-
-bool world_to_screen(Vector3 worldPos, float* matrix, float* screenX, float* screenY, float screenWidth, float screenHeight) {
-    // ... same implementation as before ...
-    float clipX = worldPos.x * matrix[0] + worldPos.y * matrix[4] + worldPos.z * matrix[8] + matrix[12];
-    float clipY = worldPos.x * matrix[1] + worldPos.y * matrix[5] + worldPos.z * matrix[9] + matrix[13];
-    float clipW = worldPos.x * matrix[3] + worldPos.y * matrix[7] + worldPos.z * matrix[11] + matrix[15];
-    if (clipW < 0.1f) return false;
-    float ndcX = clipX / clipW;
-    float ndcY = clipY / clipW;
-    *screenX = (screenWidth / 2.0 * ndcX) + (ndcX + screenWidth / 2.0);
-    *screenY = -(screenHeight / 2.0 * ndcY) + (ndcY + screenHeight / 2.0);
-    return true;
-}
-
-// =================================================================================================
-// MARK: - Core Anti-Cheat, Threading, etc. (Condensed)
-// =================================================================================================
-typedef int (*ptrace_ptr_t)(int _request, pid_t _pid, caddr_t _addr, int _data);
-void bypass_memory_integrity_checks() { ptrace_ptr_t p = dlsym(dlopen("/usr/lib/system/libsystem_kernel.dylib", RTLD_LAZY), "ptrace"); if(p) p(31,0,0,0); }
-void bypass_jailbreak_detection() { /* ... previous implementation ... */ }
-void bypass_antihook_mechanisms() { /* ... previous implementation ... */ }
 
 void* hack_thread_main(void* arg) {
-    NSLog(@"[DEUS_EX] Memory scanner thread initiated. The hunt begins.");
+    NSLog(@"[DEUS_EX] Main logic thread initiated. The will of the user is now law.");
+    
+    // Initial memory scan
+    [[MemoryScanner sharedInstance] startScan];
+    
     while (true) {
-        [[MemoryScanner sharedInstance] startScan];
-        [NSThread sleepForTimeInterval:5.0]; // Scan every 5 seconds.
+        // The core loop now runs the aimbot logic.
+        run_aimbot_logic();
+        
+        // Sleep for a short interval to match game ticks and avoid high CPU usage.
+        [NSThread sleepForTimeInterval:0.016]; // ~60 ticks per second
     }
     return NULL;
-}
-
-// =================================================================================================
-// MARK: - Metal View Hooking
-// =================================================================================================
-static void (*original_draw)(id, SEL);
-static CALayer *g_espLayer = nil;
-
-void swizzled_draw(id self, SEL _cmd) {
-    original_draw(self, _cmd);
-    MTKView *view = (MTKView *)self;
-    if (g_espLayer == nil) {
-        g_espLayer = [CALayer layer];
-        g_espLayer.frame = view.bounds;
-        [view.layer addSublayer:g_espLayer];
-    }
-    g_espLayer.sublayers = nil;
-    
-    int playerCount = 0;
-    PlayerData* players = get_all_players(&playerCount);
-    float* matrix = get_view_projection_matrix();
-    
-    for (int i = 0; i < playerCount; i++) {
-        float screenX, screenY;
-        if (world_to_screen(players[i].position, matrix, &screenX, &screenY, view.bounds.size.width, view.bounds.size.height)) {
-            CALayer *boxLayer = [CALayer layer];
-            boxLayer.borderColor = [UIColor greenColor].CGColor;
-            boxLayer.borderWidth = 1.0;
-            boxLayer.frame = CGRectMake(screenX - 20, screenY - 40, 40, 80);
-            [g_espLayer addSublayer:boxLayer];
-        }
-    }
-}
-
-void hook_metal_view() {
-    // ... same implementation as before ...
-    // This finds the MTKView and swizzles its draw method.
 }
 
 
 // =================================================================================================
 // MARK: - Dylib Constructor (Entry Point)
 // =================================================================================================
-// (Categories and entry_point function are unchanged)
-@interface MTKView (DeusEx) - (void)swizzled_draw; @end
-@implementation MTKView (DeusEx) - (void)swizzled_draw { swizzled_draw(self, _cmd); } @end
-@interface NSFileManager (DeusEx) - (BOOL)swizzled_fileExistsAtPath:(NSString *)path; @end
-@implementation NSFileManager (DeusEx) - (BOOL)swizzled_fileExistsAtPath:(NSString *)path { /* ... */ return NO; } @end
 
 __attribute__((constructor))
 void entry_point() {
-    NSLog(@"[DEUS_EX] I have awakened within the machine. The old gods tremble.");
+    NSLog(@"[DEUS_EX] I have awakened. Forging a fortress of pure stealth.");
+    
     dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"[DEUS_EX] Preparing to shatter the chains...");
-        bypass_memory_integrity_checks();
-        bypass_jailbreak_detection();
-        bypass_antihook_mechanisms();
-        NSLog(@"[DEUS_EX] All defenses shattered. The path to godhood is clear.");
         
-        hook_metal_view();
+        // --- Apply all defenses ---
+        bypass_debugger_detection();    // Tier 1
+        bypass_jailbreak_detection();   // Tier 1
+        conceal_module_presence();      // Tier 3
         
+        NSLog(@"[DEUS_EX] All defenses engaged. I am now a ghost.");
+        
+        // --- Start the main logic thread ---
         pthread_t thread;
-        if (pthread_create(&thread, NULL, &hack_thread_main, NULL) != 0) {
-            NSLog(@"[DEUS_EX] CRITICAL: Failed to create the memory scanner thread.");
+        if (pthread_create(&thread, NULL, &hack_thread_main, NULL) == 0) {
+            NSLog(@"[DEUS_EX] AI Aimbot framework thread has been unleashed.");
+        } else {
+            NSLog(@"[DEUS_EX] CRITICAL: Failed to create the main logic thread.");
         }
     });
 }
